@@ -1,0 +1,11 @@
+# JavaFX libs
+lib/
+
+# Compiled files
+*.class
+
+# OS junk
+.DS_Store
+
+# IDE stuff
+.vscode/
