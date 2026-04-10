@@ -81,6 +81,16 @@ public class Photo implements Serializable {
     public boolean hasTag(String name, String value) {
         return tags.contains(new Tag(name, value));
     }
+    // checks if this photo's date is inside the given date range.
+     // Used for date search in UserManager.
+   
+    public boolean isInDateRange(Calendar start, Calendar end) {
+        if (start == null || end == null || dateTaken == null) {
+            return false;
+        }
+
+        return !dateTaken.before(start) && !dateTaken.after(end);
+    }
 
     public String toString() {
         return filePath;
