@@ -1,8 +1,9 @@
+package photos;
 import java.io.IOException;
 import java.util.Scanner;
-import model.Album;
-import model.User;
-import model.UserManager; 
+import photos.model.Album;
+import photos.model.User;
+import photos.model.UserManager;
 
 // This is the main class that starts the app
 public class Photos {
