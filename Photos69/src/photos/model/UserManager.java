@@ -6,241 +6,239 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-
-// Stores and manages all users in the photo application.
-// This class also handles saving and loading the application data
-// using Java serialization.
-
+/**
+ * Stores and manages all users in the photo application.
+ * Handles saving and loading application data using Java serialization.
+ * Implemented as a singleton so all controllers share the same instance.
+ */
 public class UserManager implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    // Folder where app data is stored
     public static final String DATA_FOLDER = "data";
+    public static final String DATA_FILE   = DATA_FOLDER + File.separator + "users.dat";
 
-    // Serialized file used to save all users and their albums/photos
-    public static final String DATA_FILE = DATA_FOLDER + File.separator + "users.dat";
+    /**
+     * Tag types that only allow one value per photo.
+     * Checked by PhotoViewController before adding a tag.
+     */
+    public static final List<String> SINGLE_VALUE_TAG_TYPES = List.of("location");
 
-    // List of all users in the system
+    //-------------------------Singleton-------------------------
+
+    private static UserManager instance;
+
+    /**
+     * Returns the singleton instance.
+     * Loads from disk on first call.
+     */
+    public static UserManager getInstance() {
+        if(instance == null) {
+            instance = load();
+            instance.ensureDefaultUsers();
+        }
+        return instance;
+    }
+
+    //-------------------------Session Tracking-------------------------
+
+    /**
+     * The currently logged-in user.
+     * Transient — not serialized since session state is runtime only.
+     */
+    private transient User currentUser;
+
+    public void setCurrentUser(User user) {
+        this.currentUser = user;
+    }
+
+    // returns the currently logged-in user
+    public User getCurrentUser() {
+        return currentUser;
+    }
+
+    //-------------------------Fields-------------------------
+
     private List<User> users;
 
-    // Creates an empty user manager.
     public UserManager() {
         users = new ArrayList<>();
     }
 
-    // Basic User Operations
+    //-------------------------User Operations-------------------------
 
-    // Returns all users.
+    // returns all users in the system
     public List<User> getUsers() {
         return users;
     }
 
-     // Finds a user by username.
-     // Returns null if not found.
-     // 
+    //Finds a user by username (case-insensitive).
     public User getUser(String username) {
-        if (username == null) {
-            return null;
-        }
-
-        for (User user : users) {
-            if (user.getUsername().equalsIgnoreCase(username.trim())) {
+        if(username == null) return null;
+        for(User user : users) {
+            if(user.getUsername().equalsIgnoreCase(username.trim())) {
                 return user;
             }
         }
-
         return null;
     }
 
-
-    // Adds a new user if username is not blank
-    // and does not already exist.
+    /**
+     * Adds a new user by username.
+     * Rejects blank, duplicate, or reserved usernames.
+     */
     public boolean addUser(String username) {
-        if (username == null || username.trim().isEmpty()) {
-            return false;
-        }
-
-        if (getUser(username) != null) {
-            return false;
-        }
-
+        if(username == null || username.trim().isEmpty()) return false;
+        if(isReserved(username)) return false;
+        if(getUser(username) != null) return false;
         users.add(new User(username.trim()));
         return true;
     }
 
-     // Removes a user by username.
+    /**
+     * Removes a user by username.
+     * Reserved users (admin, stock) cannot be removed.
+     */
     public boolean removeUser(String username) {
+        if(isReserved(username)) return false;
         User user = getUser(username);
-        if (user == null) {
-            return false;
-        }
-
+        if(user == null) return false;
         return users.remove(user);
     }
-    // Default Users
 
+    // Returns true if the username is reserved and cannot be deleted.
+    private boolean isReserved(String username) {
+        return username.equalsIgnoreCase("admin") || username.equalsIgnoreCase("stock");
+    }
 
-    // Makes sure the required special users exist:
-    // admin
-    // stock
-    // Also makes sure stock has an album named "stock".
+    //-------------------------Default Users-------------------------
+
+    /**
+     * Ensures admin and stock users exist on startup.
+     * Populates the stock album with image files from data/.
+     */
     public void ensureDefaultUsers() {
-        if (getUser("admin") == null) {
-            addUser("admin");
+        if(getUser("admin") == null) {
+            users.add(new User("admin"));
         }
 
-        if (getUser("stock") == null) {
+        if(getUser("stock") == null) {
             User stockUser = new User("stock");
             stockUser.addAlbum("stock");
+
+            File dataDir = new File(DATA_FOLDER);
+            Album stockAlbum = stockUser.getAlbum("stock");
+            if(dataDir.exists() && dataDir.isDirectory() && stockAlbum != null) {
+                for(File f : dataDir.listFiles()) {
+                    if(isImageFile(f)) {
+                        java.util.Calendar cal = java.util.Calendar.getInstance();
+                        cal.setTimeInMillis(f.lastModified());
+                        cal.set(java.util.Calendar.MILLISECOND, 0);
+                        stockAlbum.addPhoto(new Photo(f.getAbsolutePath(), cal));
+                    }
+                }
+            }
             users.add(stockUser);
         }
     }
 
-    // Save / Load
-
-    // Saves the whole UserManager object to disk.
-    public void save() throws IOException {
-        File folder = new File(DATA_FOLDER);
-
-        // Make sure the data folder exists
-        if (!folder.exists()) {
-            folder.mkdirs();
-        }
-
-        ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(DATA_FILE));
-        out.writeObject(this);
-        out.close();
+    private boolean isImageFile(File file) {
+        if(!file.isFile()) return false;
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".jpg") || name.endsWith(".jpeg")
+            || name.endsWith(".png") || name.endsWith(".gif")
+            || name.endsWith(".bmp");
     }
 
-     // Loads saved data from disk.
-     // If no save file exists yet, returns a new empty UserManager.
+    //-------------------------Save/Load-------------------------
+
+    //Saves this UserManager to disk.
+    public void save() throws IOException {
+        File folder = new File(DATA_FOLDER);
+        if(!folder.exists()) folder.mkdirs();
+        try(ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
+            out.writeObject(this);
+        }
+    }
+
+    /**
+     * Loads UserManager from disk.
+     * Returns a new empty instance if no file exists.
+     */
     public static UserManager load() {
         try {
             File file = new File(DATA_FILE);
-
-            if (!file.exists()) {
-                return new UserManager();
+            if(!file.exists()) return new UserManager();
+            try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
+                return (UserManager) in.readObject();
             }
-
-            ObjectInputStream in = new ObjectInputStream(new FileInputStream(file));
-            UserManager manager = (UserManager) in.readObject();
-            in.close();
-
-            return manager;
-        } catch (Exception e) {
+        }catch(Exception e) {
             return new UserManager();
         }
     }
 
-    // Search Helpers
+    //-------------------------Search Helpers-------------------------
 
-    // Returns all unique photos belonging to a user across all albums.
-    // This is important because the same photo may appear in multiple albums,
-    // but we only want one copy in search results.
-
+    /**
+     * Returns all unique photos for a user across all albums.
+     * Uses object identity for deduplication since the same Photo
+     * object is shared by reference across albums.
+     */
     public List<Photo> getAllUniquePhotos(User user) {
         List<Photo> result = new ArrayList<>();
-
-        if (user == null) {
-            return result;
-        }
-
+        if(user == null) return result;
         Set<Photo> seen = new HashSet<>();
-
-        for (Album album : user.getAlbums()) {
-            for (Photo photo : album.getPhotos()) {
-                if (!seen.contains(photo)) {
-                    seen.add(photo);
-                    result.add(photo);
-                }
+        for(Album album : user.getAlbums()) {
+            for(Photo photo : album.getPhotos()) {
+                if(seen.add(photo)) result.add(photo);
             }
         }
-
         return result;
     }
 
-    // Searches a user's photos by one tag pair.
+    // Searches by a single tag name+value pair
     public List<Photo> searchBySingleTag(User user, String tagName, String tagValue) {
         List<Photo> result = new ArrayList<>();
-
-        if (user == null || tagName == null || tagValue == null) {
-            return result;
+        if(user == null || tagName == null || tagValue == null) return result;
+        for(Photo photo : getAllUniquePhotos(user)) {
+            if(photo.hasTag(tagName, tagValue)) result.add(photo);
         }
-
-        for (Photo photo : getAllUniquePhotos(user)) {
-            if (photo.hasTag(tagName, tagValue)) {
-                result.add(photo);
-            }
-        }
-
         return result;
     }
 
-     // Searches a user's photos by two tag pairs using AND.
+    //Searches by two tag pairs using AND logic
     public List<Photo> searchByTwoTagsAnd(User user,
                                           String tagName1, String tagValue1,
                                           String tagName2, String tagValue2) {
         List<Photo> result = new ArrayList<>();
-
-        if (user == null) {
-            return result;
-        }
-
-        for (Photo photo : getAllUniquePhotos(user)) {
-            boolean firstMatch = photo.hasTag(tagName1, tagValue1);
-            boolean secondMatch = photo.hasTag(tagName2, tagValue2);
-
-            if (firstMatch && secondMatch) {
+        if(user == null) return result;
+        for(Photo photo : getAllUniquePhotos(user)) {
+            if(photo.hasTag(tagName1, tagValue1) && photo.hasTag(tagName2, tagValue2))
                 result.add(photo);
-            }
         }
-
         return result;
     }
 
-     // Searches a user's photos by two tag pairs using OR.
-     
+    // Searches by two tag pairs using OR logic
     public List<Photo> searchByTwoTagsOr(User user,
                                          String tagName1, String tagValue1,
                                          String tagName2, String tagValue2) {
         List<Photo> result = new ArrayList<>();
-
-        if (user == null) {
-            return result;
-        }
-
-        for (Photo photo : getAllUniquePhotos(user)) {
-            boolean firstMatch = photo.hasTag(tagName1, tagValue1);
-            boolean secondMatch = photo.hasTag(tagName2, tagValue2);
-
-            if (firstMatch || secondMatch) {
+        if(user == null) return result;
+        for(Photo photo : getAllUniquePhotos(user)) {
+            if(photo.hasTag(tagName1, tagValue1) || photo.hasTag(tagName2, tagValue2))
                 result.add(photo);
-            }
         }
-
         return result;
     }
 
-    /**
-     * Searches a user's photos by date range.
-     *
-     * This assumes Photo has a method:
-     *   boolean isInDateRange(Calendar start, Calendar end)
-     */
+    // Searches by date range (inclusive on both ends)
     public List<Photo> searchByDate(User user, java.util.Calendar start, java.util.Calendar end) {
         List<Photo> result = new ArrayList<>();
-
-        if (user == null || start == null || end == null) {
-            return result;
+        if(user == null || start == null || end == null) return result;
+        for(Photo photo : getAllUniquePhotos(user)) {
+            if(photo.isInDateRange(start, end)) result.add(photo);
         }
-
-        for (Photo photo : getAllUniquePhotos(user)) {
-            if (photo.isInDateRange(start, end)) {
-                result.add(photo);
-            }
-        }
-
         return result;
     }
 }
