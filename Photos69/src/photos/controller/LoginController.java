@@ -51,7 +51,7 @@ public class LoginController {
 
         // Look up regular user
         UserManager um = UserManager.getInstance();
-        User user = um.getUserByUsername(username);
+        User user = um.getUser(username);
 
         if(user == null) {
             showError("Username not found. Please try again.");

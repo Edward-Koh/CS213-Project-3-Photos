@@ -82,6 +82,7 @@ public class AlbumListController {
         albumTable.setItems(FXCollections.observableArrayList(currentUser.getAlbums()));
     }
 
+    //---------------------ALBUM FUNCTIONS---------------------
     /**
      * Handles creating a new album.
      * Prompts for a name and rejects duplicates.
@@ -100,8 +101,7 @@ public class AlbumListController {
                 return;
             }
 
-            Album album = new Album(name);
-            boolean added = currentUser.addAlbum(album);
+            boolean added = currentUser.addAlbum(name);
 
             if(!added) {
                 showError("An album with that name already exists.");
@@ -133,7 +133,7 @@ public class AlbumListController {
 
         confirm.showAndWait().ifPresent(response -> {
             if(response == ButtonType.OK) {
-                currentUser.removeAlbum(selected);
+                currentUser.removeAlbum(selected.getName());
                 refreshAlbumTable();
                 saveData();
             }
@@ -165,7 +165,7 @@ public class AlbumListController {
                 return;
             }
 
-            boolean renamed = currentUser.renameAlbum(selected, newName);
+            boolean renamed = currentUser.renameAlbum(selected.getName(), newName);
             if(!renamed) {
                 showError("An album with that name already exists.");
                 return;

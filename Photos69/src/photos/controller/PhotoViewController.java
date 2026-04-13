@@ -24,12 +24,12 @@ import java.util.List;
  */
 public class PhotoViewController {
 
-    @FXML private ImageView        photoImageView;
-    @FXML private Label            captionLabel;
-    @FXML private Label            dateLabel;
-    @FXML private ListView<Tag>    tagListView;
+    @FXML private ImageView      photoImageView;
+    @FXML private Label          captionLabel;
+    @FXML private Label          dateLabel;
+    @FXML private ListView<Tag>  tagListView;
     @FXML private ComboBox<String> tagTypeComboBox;
-    @FXML private TextField        tagValueField;
+    @FXML private TextField      tagValueField;
 
     private Stage stage;
     private Photo photo;
@@ -70,7 +70,7 @@ public class PhotoViewController {
 
     // Populates the tag type ComboBox with the user's available tag types
     private void populateTagTypeComboBox() {
-        List<String> tagTypes = UserManager.getInstance().getCurrentUser().getAllTagTypes();
+        List<String> tagTypes = UserManager.getInstance().getCurrentUser().getTagTypes();
         tagTypeComboBox.setItems(FXCollections.observableArrayList(tagTypes));
         if(!tagTypes.isEmpty()) {
             tagTypeComboBox.getSelectionModel().selectFirst();
@@ -179,7 +179,7 @@ public class PhotoViewController {
 
             boolean added = UserManager.getInstance()
                                        .getCurrentUser()
-                                       .addCustomTagType(typeName);
+                                       .addTagType(typeName);
             if(!added) {
                 showError("That tag type already exists.");
                 return;

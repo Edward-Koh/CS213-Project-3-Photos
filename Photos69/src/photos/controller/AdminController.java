@@ -58,8 +58,7 @@ public class AdminController {
                 return;
             }
 
-            User newUser = new User(username);
-            boolean added = UserManager.getInstance().addUser(newUser);
+            boolean added = UserManager.getInstance().addUser(username);
 
             if(!added) {
                 showError("Username already exists or is reserved.");
@@ -92,7 +91,7 @@ public class AdminController {
 
         confirm.showAndWait().ifPresent(response -> {
             if(response == ButtonType.OK) {
-                UserManager.getInstance().deleteUser(selected);
+                UserManager.getInstance().removeUser(selected.getUsername());
                 refreshUserList();
                 saveData();
             }

@@ -1,6 +1,5 @@
 package photos.controller;
 
-import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
@@ -57,6 +56,8 @@ public class AlbumViewController {
     // Refreshes the thumbnail grid with the current album
     private void refreshPhotoGrid() {
         photoTilePane.getChildren().clear();
+        selectedPhoto = null;
+        selectedCell  = null;
 
         for(Photo photo : currentAlbum.getPhotos()) {
             try {
@@ -73,7 +74,12 @@ public class AlbumViewController {
                 cell.setStyle("-fx-cursor: hand; -fx-padding: 5;");
 
                 //click function to see photo
-                cell.setOnMouseClicked(e -> openPhotoView(photo));
+                cell.setOnMouseClicked(e -> {
+                    setSelectedPhoto(photo, cell);
+                    if (e.getClickCount() == 2) {
+                        openPhotoView(photo);
+                    }
+                });
 
                 photoTilePane.getChildren().add(cell);
             } catch (Exception e) {

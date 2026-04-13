@@ -35,19 +35,13 @@ public class SearchController {
     @FXML private DatePicker startDatePicker;
     @FXML private DatePicker endDatePicker;
 
-    // Tag search fields
     @FXML private ComboBox<String> tagType1ComboBox;
     @FXML private TextField        tagValue1Field;
     @FXML private ComboBox<String> tagType2ComboBox;
     @FXML private TextField        tagValue2Field;
 
-    // AND/OR toggle
-    @FXML private RadioButton andRadioButton;
-    @FXML private RadioButton orRadioButton;
-
-    // displays results
-    @FXML private TilePane resultsTilePane;
-    @FXML private Label    resultsCountLabel;
+    @FXML private TilePane         resultsTilePane;
+    @FXML private Label            resultsCountLabel;
 
     private Stage       stage;
     private User        currentUser;
@@ -66,18 +60,16 @@ public class SearchController {
      */
     public void initData() {
         currentUser = UserManager.getInstance().getCurrentUser();
-
-        List<String> tagTypes = currentUser.getAllTagTypes();
+        List<String> tagTypes = currentUser.getTagTypes();
         tagType1ComboBox.setItems(FXCollections.observableArrayList(tagTypes));
         tagType2ComboBox.setItems(FXCollections.observableArrayList(tagTypes));
-
         if(!tagTypes.isEmpty()) {
             tagType1ComboBox.getSelectionModel().selectFirst();
             tagType2ComboBox.getSelectionModel().selectFirst();
         }
     }
 
-    //------------searching by date-----------
+    //-------------------------Search Handlers-------------------------
     /**
      * Handles searching photos by date range in user's data
      * Duplicate photos (same file in multiple albums) are deduplicated by file path.
@@ -96,28 +88,10 @@ public class SearchController {
             return;
         }
 
-        Calendar startCal = localDateToCalendar(start);
-        Calendar endCal   = localDateToCalendar(end);
-        // Set end to end of day so photos taken on the end date are included
-        endCal.set(Calendar.HOUR_OF_DAY, 23);
-        endCal.set(Calendar.MINUTE, 59);
-        endCal.set(Calendar.SECOND, 59);
+        Calendar startCal = toCalendar(start, false);
+        Calendar endCal   = toCalendar(end, true); // end of day
 
-        searchResults = new ArrayList<>();
-        List<String> seen = new ArrayList<>();
-
-        for(Album album : currentUser.getAlbums()) {
-            for(Photo photo : album.getPhotos()) {
-                Calendar taken = photo.getDateTaken();
-                if(!taken.before(startCal) && !taken.after(endCal)) {
-                    if(!seen.contains(photo.getFilePath())) {
-                        searchResults.add(photo);
-                        seen.add(photo.getFilePath());
-                    }
-                }
-            }
-        }
-
+        searchResults = UserManager.getInstance().searchByDate(currentUser, startCal, endCal);
         displayResults();
     }
 
@@ -134,7 +108,7 @@ public class SearchController {
             return;
         }
 
-        searchResults = collectPhotosMatchingTag(type, value);
+        searchResults = UserManager.getInstance().searchBySingleTag(currentUser, type, value);
         displayResults();
     }
 
@@ -146,29 +120,20 @@ public class SearchController {
         String type2  = tagType2ComboBox.getValue();
         String value2 = tagValue2Field.getText().trim();
 
-        if(type1 == null || value1.isEmpty() || type2 == null || value2.isEmpty()) {
+        if (type1 == null || value1.isEmpty() || type2 == null || value2.isEmpty()) {
             showError("Please fill in both tag fields.");
             return;
         }
 
-        searchResults = new ArrayList<>();
-        List<String> seen = new ArrayList<>();
-
-        for(Album album : currentUser.getAlbums()) {
-            for(Photo photo : album.getPhotos()) {
-                if(photo.hasTag(type1, value1) && photo.hasTag(type2, value2)) {
-                    if(!seen.contains(photo.getFilePath())) {
-                        searchResults.add(photo);
-                        seen.add(photo.getFilePath());
-                    }
-                }
-            }
-        }
-
+        searchResults = UserManager.getInstance()
+                .searchByTwoTagsAnd(currentUser, type1, value1, type2, value2);
         displayResults();
     }
 
-    //Handles OR search: photos must have tag1 OR tag2 (or both).
+    /**
+     * Searches by two tag pairs using OR logic.
+     * Delegates to UserManager.searchByTwoTagsOr().
+     */
     @FXML
     private void handleOrSearch() {
         String type1  = tagType1ComboBox.getValue();
@@ -181,29 +146,14 @@ public class SearchController {
             return;
         }
 
-        searchResults = new ArrayList<>();
-        List<String> seen = new ArrayList<>();
-
-        for(Album album : currentUser.getAlbums()) {
-            for(Photo photo : album.getPhotos()) {
-                if(photo.hasTag(type1, value1) || photo.hasTag(type2, value2)) {
-                    if(!seen.contains(photo.getFilePath())) {
-                        searchResults.add(photo);
-                        seen.add(photo.getFilePath());
-                    }
-                }
-            }
-        }
-
+        searchResults = UserManager.getInstance()
+                .searchByTwoTagsOr(currentUser, type1, value1, type2, value2);
         displayResults();
     }
 
     //---------------Results Display--------------------
 
-    /**
-     * Renders the current searchResults list into the results TilePane.
-     * Shows thumbnails and captions, similar to album view.
-     */
+    //Renders search results as thumbnails in the TilePane.
     private void displayResults() {
         resultsTilePane.getChildren().clear();
         resultsCountLabel.setText(searchResults.size() + " result(s) found.");
@@ -223,8 +173,7 @@ public class SearchController {
                 cell.setStyle("-fx-padding: 5;");
                 resultsTilePane.getChildren().add(cell);
             }catch(Exception e) {
-                Label broken = new Label("[Missing]\n" + photo.getCaption());
-                resultsTilePane.getChildren().add(broken);
+                resultsTilePane.getChildren().add(new Label("[Missing]\n" + photo.getCaption()));
             }
         }
     }
@@ -233,8 +182,8 @@ public class SearchController {
 
     /**
      * Creates a new album from the current search results.
-     * Prompts for an album name and rejects duplicates.
-     * Uses photo reference
+     * Uses User.addAlbum(String) then retrieves the Album object
+     * to add photos to it by reference.
      */
     @FXML
     private void handleSaveAsAlbum() {
@@ -255,14 +204,14 @@ public class SearchController {
                 return;
             }
 
-            Album newAlbum = new Album(name);
-            boolean created = currentUser.addAlbum(newAlbum);
-
+            boolean created = currentUser.addAlbum(name);
             if(!created) {
                 showError("An album with that name already exists.");
                 return;
             }
 
+            // Retrieve the newly created Album object to add photos to it
+            Album newAlbum = currentUser.getAlbum(name);
             for(Photo photo : searchResults) {
                 newAlbum.addPhoto(photo);
             }
@@ -292,36 +241,19 @@ public class SearchController {
 
     // --------------------------Helpers-------------------------
 
-    /**
-     * Collects all unique photos across all user albums that match
-     * the given tag name and value.
-     * returns a list of matching photos, deduplicated by file path
-     */
-    private List<Photo> collectPhotosMatchingTag(String type, String value) {
-        List<Photo> results = new ArrayList<>();
-        List<String> seen   = new ArrayList<>();
 
-        for(Album album : currentUser.getAlbums()) {
-            for(Photo photo : album.getPhotos()) {
-                if(photo.hasTag(type, value) && !seen.contains(photo.getFilePath())) {
-                    results.add(photo);
-                    seen.add(photo.getFilePath());
-                }
-            }
-        }
-        return results;
-    }
+    // Converts a LocalDate from DatePicker to a Calendar.
 
-    // Converts a LocalDate (from DatePicker) to a Calendar instance.
-    private Calendar localDateToCalendar(LocalDate date) {
+    private Calendar toCalendar(LocalDate date, boolean endOfDay) {
         Calendar cal = Calendar.getInstance();
         cal.set(date.getYear(), date.getMonthValue() - 1, date.getDayOfMonth(),
-                0, 0, 0);
+                endOfDay ? 23 : 0,
+                endOfDay ? 59 : 0,
+                endOfDay ? 59 : 0);
         cal.set(Calendar.MILLISECOND, 0);
         return cal;
     }
 
-    // Saves all user data to disk.
     private void saveData() {
         try {
             UserManager.getInstance().save();
@@ -330,7 +262,6 @@ public class SearchController {
         }
     }
 
-    // Shows an error alert.
     private void showError(String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("Error");
@@ -339,7 +270,6 @@ public class SearchController {
         alert.showAndWait();
     }
 
-    // Shows an informational alert.
     private void showInfo(String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Done");
